@@ -5,7 +5,7 @@ using TMPro;
 public class DisplayClickIncrement : MonoBehaviour
 {
     public TextMeshPro displayText; 
-    public SwitchToggle switchToggle; // Assign in Inspector!
+    public SwitchToggle switchToggle; 
     public int value = 0;
     public int minValue = 0;
     public int maxValue = 200;

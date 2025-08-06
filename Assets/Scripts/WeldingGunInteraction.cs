@@ -4,40 +4,49 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine.XR.Interaction.Toolkit;
 
+/// <summary>
+/// Handles main interaction logic for the welding gun: 
+/// - Grabbing, releasing, and welding,
+/// - Placing beads and evaluating the weld,
+/// - Managing visuals, audio, and scoring UI.
+/// </summary>
 public class WeldingGunInteraction : MonoBehaviour
 {
+    // =======================
+    // Inspector References
+    // =======================
     [Header("References")]
-    public Transform rayOrigin;
-    public float rayDistance = 3f;
-    public LayerMask metalLayer;
-    public Camera xrCamera;
-    public Camera weldingZoomCam;
-    public ParticleSystem weldSparks;
-    public Transform metalSurface;
-    public float weldSparkDistance = 0.08f;
-    public GameObject weldBeadPrefab;
-    public float weldMarkSpacing = 0.015f;
+    public Transform rayOrigin;                        // Where the welding "ray" starts (tip)
+    public float rayDistance = 3f;                     // Max reach for raycast when welding
+    public LayerMask metalLayer;                       // Collision layers for valid metal
+    public Camera xrCamera;                            // Main VR camera
+    public Camera weldingZoomCam;                      // Secondary zoom camera during welding
+    public ParticleSystem weldSparks;                  // Sparks effect at weld tip
+    public Transform metalSurface;                     // The metal for distance effect
+    public float weldSparkDistance = 0.08f;            // Fire sparks when close enough
+    public GameObject weldBeadPrefab;                  // Bead mark object
+    public float weldMarkSpacing = 0.015f;             // Spacing between individual weld marks
 
     [Header("Weld Seam")]
-    public Transform seamStart;
-    public Transform seamEnd;
-    public float seamThreshold = 0.02f;
+    public Transform seamStart;                        // Start point of the welding seam
+    public Transform seamEnd;                          // End point of the welding seam
+    public float seamThreshold = 0.02f;                // Allowable deviation from seam
 
     [Header("Bead Size Settings")]
-    public float minWeldDistance = 0.01f;
-    public float maxWeldDistance = 0.06f;
-    public float optimalWeldDistance = 0.03f;
-    public float optimalBand = 0.01f;
+    public float minWeldDistance = 0.01f;              // Too close (fat bead)
+    public float maxWeldDistance = 0.06f;              // Too far (thin bead)
+    public float optimalWeldDistance = 0.03f;          // Ideal welding tip-to-surface distance
+    public float optimalBand = 0.01f;                  // Tolerance for optimal
     public float fatScale = 1.5f;
     public float goodScale = 1.0f;
     public float thinScale = 0.5f;
 
     [Header("Audio & Light")]
-    public AudioSource weldingLoopAudio;
-    public Light weldPointLight;
+    public AudioSource weldingLoopAudio;               // Looping arc sound
+    public Light weldPointLight;                       // Point light at welding tip
 
     [Header("Display/Score System")]
-    public DisplayClickIncrement displayScript;
+    public DisplayClickIncrement displayScript;        // Script that provides the display value
     public GameObject excellentUIPanel;
     public GameObject goodUIPanel;
     public GameObject badUIPanel;
@@ -55,7 +64,9 @@ public class WeldingGunInteraction : MonoBehaviour
     public Material optimalMoltenMaterial;
     public Material redHotMaterial;
 
+    // =======================
     // Internal State
+    // =======================
     private UnityEngine.XR.Interaction.Toolkit.Interactables.XRGrabInteractable grabInteractable;
     private bool isWeldingMode = false;
     private bool triggerHeld = false;
@@ -106,6 +117,7 @@ public class WeldingGunInteraction : MonoBehaviour
 
     void Update()
     {
+        // If in welding mode while trigger is pressed
         if (isWeldingMode && triggerHeld)
         {
             EvaluateWeldingQuality();
@@ -117,16 +129,21 @@ public class WeldingGunInteraction : MonoBehaviour
         }
         else
         {
+            // Turn off all welding effects when not welding
             if (weldSparks && weldSparks.isEmitting) weldSparks.Stop();
             if (weldPointLight) weldPointLight.enabled = false;
             if (weldingLoopAudio && weldingLoopAudio.isPlaying) weldingLoopAudio.Stop();
         }
     }
 
+    // =======================
+    // Event: On Grab
+    // =======================
     private void OnGrab(SelectEnterEventArgs args)
     {
         HideAllScorePanels();
 
+        // Lock out if gas is off or display switch is off
         if (!GasTankToggle.isGasOn || (displaySwitch && !displaySwitch.IsOn))
         {
             grabInteractable?.interactionManager.SelectExit(args.interactorObject, grabInteractable);
@@ -147,6 +164,9 @@ public class WeldingGunInteraction : MonoBehaviour
         if (lockUIPopup) lockUIPopup.SetActive(false);
     }
 
+    // =======================
+    // Event: On Release
+    // =======================
     private void OnRelease(SelectExitEventArgs args)
     {
         xrCamera.gameObject.SetActive(true);
@@ -160,6 +180,7 @@ public class WeldingGunInteraction : MonoBehaviour
         StartCoroutine(ShowFinalScorePanelRoutine());
     }
 
+    // Shows correct score panel, then hides after 3 seconds
     private IEnumerator ShowFinalScorePanelRoutine()
     {
         yield return new WaitForSeconds(0.5f);
@@ -185,6 +206,9 @@ public class WeldingGunInteraction : MonoBehaviour
         HideAllScorePanels();
     }
 
+    // =======================
+    // Event: On Trigger Down
+    // =======================
     private void OnTriggerPressed(ActivateEventArgs args)
     {
         Ray ray = new Ray(rayOrigin.position, rayOrigin.forward);
@@ -203,6 +227,9 @@ public class WeldingGunInteraction : MonoBehaviour
         }
     }
 
+    // =======================
+    // Event: On Trigger Up
+    // =======================
     private void OnTriggerReleased(DeactivateEventArgs args)
     {
         triggerHeld = false;
@@ -212,12 +239,16 @@ public class WeldingGunInteraction : MonoBehaviour
         hasPlacedMark = false;
     }
 
+    // =======================
+    // Welding Quality Checks
+    // =======================
     private void EvaluateWeldingQuality()
     {
         weldDuration += Time.deltaTime;
         timeInOptimalZone += Time.deltaTime;
     }
 
+    // Checks that seam is covered by beads with no gaps above threshold
     private bool IsSeamCovered(float sampleSpacing = 0.018f, float beadTolerance = 0.025f)
     {
         if (seamStart == null || seamEnd == null || beadPositions.Count == 0)
@@ -246,6 +277,7 @@ public class WeldingGunInteraction : MonoBehaviour
         return true;
     }
 
+    // Score the weld based on coverage and consistency
     private void CalculateFinalScore()
     {
         if (beadResults.Count == 0) return;
@@ -268,6 +300,9 @@ public class WeldingGunInteraction : MonoBehaviour
             lastScoreResult = "good";
     }
 
+    // =======================
+    // Sparks Effect Toggle
+    // =======================
     private void UpdateWeldSparks()
     {
         if (!weldSparks || !rayOrigin || !metalSurface) return;
@@ -282,6 +317,9 @@ public class WeldingGunInteraction : MonoBehaviour
         }
     }
 
+    // =======================
+    // Weld Mark Placement (Main Placement Logic!)
+    // =======================
     private void TryPlaceWeldMark()
     {
         if (!weldBeadPrefab) return;
@@ -306,14 +344,13 @@ public class WeldingGunInteraction : MonoBehaviour
                 );
                 mark.transform.localScale = Vector3.one * scaleFactor;
 
-                // -------- Robust STATE/Material switching --------
+                // -------- STATE/Material switching by display value --------
                 int displayValue = displayScript ? displayScript.value : 0;
-                Debug.Log("Display Value at bead: " + displayValue); // For diagnosis; can remove later
+                Debug.Log("Display Value at bead: " + displayValue); // For debugging
 
                 Material selectedMat = moderateMoltenMaterial;
                 bool colorOptimal = false;
 
-                // State switching: make sure NO overlaps in ranges and all values are handled
                 if (displayValue > 80 && displayValue <= 100)
                 {
                     selectedMat = optimalMoltenMaterial;
@@ -324,7 +361,7 @@ public class WeldingGunInteraction : MonoBehaviour
                     selectedMat = redHotMaterial;
                     colorOptimal = false;
                 }
-                else // ≤ 80, catch explicitly
+                else // ≤ 80
                 {
                     selectedMat = moderateMoltenMaterial;
                     colorOptimal = false;
@@ -344,6 +381,7 @@ public class WeldingGunInteraction : MonoBehaviour
         }
     }
 
+    // Checks if tip is close enough to the seam to allow marking
     private bool IsTipOnSeam(Vector3 tipPosition)
     {
         if (!seamStart || !seamEnd) return false;
@@ -356,6 +394,7 @@ public class WeldingGunInteraction : MonoBehaviour
         return dist <= seamThreshold;
     }
 
+    // Utility: Turn off all result UI panels
     private void HideAllScorePanels()
     {
         if (excellentUIPanel) excellentUIPanel.SetActive(false);

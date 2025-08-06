@@ -3,7 +3,7 @@ using UnityEngine.Rendering;
 
 public class VolumeProfileRefresher : MonoBehaviour
 {
-    public Volume volume; // Drag your Global Volume here in the Inspector
+    public Volume volume; 
 
     void Start()
     {
